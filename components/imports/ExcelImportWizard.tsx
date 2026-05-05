@@ -1,10 +1,12 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { CheckCircle2, FileSpreadsheet, Loader2, Upload, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toastApiError, toastImportSummary } from "@/components/toasts";
 import {
@@ -17,7 +19,12 @@ import { FailedRowsTable } from "./FailedRowsTable";
 
 export type ImportKind = "intake" | "approvals" | "repayments";
 
-const IMPORTERS: Record<ImportKind, (form: FormData) => Promise<ImportSummary>> = {
+type ImportQuery = Record<string, string | number | boolean | null | undefined>;
+
+const IMPORTERS: Record<
+  ImportKind,
+  (form: FormData, query?: ImportQuery) => Promise<ImportSummary>
+> = {
   intake: importIntake,
   approvals: importApprovals,
   repayments: importRepayments,
@@ -29,23 +36,74 @@ const ALLOWED_MIME = [
 const ALLOWED_EXT = ".xlsx";
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB upper bound for bulk imports
 
+const SHORT_MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
 type Step = "upload" | "processing" | "results";
+
+type PeriodOption = { year: number; month: number; label: string; value: string };
+
+function buildPeriodOptions(now: Date): PeriodOption[] {
+  const currentYear = now.getFullYear();
+  const out: PeriodOption[] = [];
+  // Most recent first: current year + 1, current year, current year − 1.
+  for (const y of [currentYear + 1, currentYear, currentYear - 1]) {
+    for (let m = 12; m >= 1; m--) {
+      out.push({
+        year: y,
+        month: m,
+        label: `${SHORT_MONTHS[m - 1]} ${y}`,
+        value: `${y}-${String(m).padStart(2, "0")}`,
+      });
+    }
+  }
+  return out;
+}
+
+function clampYear(value: string | null, fallback: number): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 2000 || n > 2100) return fallback;
+  return n;
+}
+
+function clampMonth(value: string | null, fallback: number): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > 12) return fallback;
+  return n;
+}
 
 export function ExcelImportWizard({
   kind,
   title,
   description,
   templateHref,
+  requirePeriod,
 }: {
   kind: ImportKind;
   title: string;
   description: string;
   templateHref?: string;
+  /** When true, render a Period select next to the file input and post periodYear/periodMonth in the FormData. */
+  requirePeriod?: boolean;
 }) {
   const importer = IMPORTERS[kind];
   const inputId = useId();
+  const periodId = useId();
+  const searchParams = useSearchParams();
+  const now = useMemo(() => new Date(), []);
+  const periodOptions = useMemo(() => buildPeriodOptions(now), [now]);
+
+  const initialPeriod = useMemo(() => {
+    const y = clampYear(searchParams.get("year"), now.getFullYear());
+    const m = clampMonth(searchParams.get("month"), now.getMonth() + 1);
+    return `${y}-${String(m).padStart(2, "0")}`;
+  }, [searchParams, now]);
+
   const [step, setStep] = useState<Step>("upload");
   const [file, setFile] = useState<File | null>(null);
+  const [period, setPeriod] = useState<string>(initialPeriod);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
 
@@ -77,9 +135,26 @@ export function ExcelImportWizard({
     const fd = new FormData();
     fd.append("file", file);
 
+    let query: ImportQuery | undefined;
+    if (requirePeriod) {
+      const [yStr, mStr] = period.split("-");
+      const periodYear = Number(yStr);
+      const periodMonth = Number(mStr);
+      if (
+        !Number.isInteger(periodYear) ||
+        !Number.isInteger(periodMonth) ||
+        periodMonth < 1 ||
+        periodMonth > 12
+      ) {
+        setError("Select a valid period.");
+        return;
+      }
+      query = { periodYear, periodMonth };
+    }
+
     setStep("processing");
     try {
-      const result = await importer(fd);
+      const result = await importer(fd, query);
       setSummary(result);
       setStep("results");
       toastImportSummary(result);
@@ -103,28 +178,58 @@ export function ExcelImportWizard({
 
         {step === "upload" && (
           <form onSubmit={onSubmit} noValidate className="mt-4 space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor={inputId}>Excel file (.xlsx)</Label>
-              <Input
-                id={inputId}
-                type="file"
-                accept={ALLOWED_EXT}
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              />
-              {error && (
-                <p role="alert" className="text-xs text-danger">
-                  {error}
-                </p>
-              )}
-              {templateHref && (
-                <p className="text-xs text-muted-foreground">
-                  <a href={templateHref} className="underline">
-                    Download template
-                  </a>{" "}
-                  · headers go in row 1, data starts at row 2.
-                </p>
+            <div
+              className={
+                requirePeriod
+                  ? "grid gap-4 sm:grid-cols-[1fr,minmax(180px,auto)]"
+                  : ""
+              }
+            >
+              <div className="space-y-1.5">
+                <Label htmlFor={inputId}>Excel file (.xlsx)</Label>
+                <Input
+                  id={inputId}
+                  type="file"
+                  accept={ALLOWED_EXT}
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                />
+              </div>
+              {requirePeriod && (
+                <div className="space-y-1.5">
+                  <Label htmlFor={periodId}>Period</Label>
+                  <Select
+                    id={periodId}
+                    aria-label="Period"
+                    value={period}
+                    onChange={(e) => setPeriod(e.target.value)}
+                  >
+                    {periodOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
               )}
             </div>
+            {error && (
+              <p role="alert" className="text-xs text-danger">
+                {error}
+              </p>
+            )}
+            {templateHref && (
+              <p className="text-xs text-muted-foreground">
+                <a href={templateHref} className="underline">
+                  Download template
+                </a>{" "}
+                · headers go in row 1, data starts at row 2.
+              </p>
+            )}
+            {requirePeriod && (
+              <p className="text-xs text-muted-foreground">
+                Every row in the uploaded file is recorded against the selected period.
+              </p>
+            )}
             <div className="flex justify-end">
               <Button type="submit">
                 <Upload className="h-4 w-4" aria-hidden /> Process file

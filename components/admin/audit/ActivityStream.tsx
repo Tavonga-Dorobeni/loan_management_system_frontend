@@ -21,7 +21,7 @@ export function ActivityStream() {
   if (!canRead) {
     return (
       <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-        Activity log access is admin-only.
+        Audit log access is admin-only.
       </p>
     );
   }

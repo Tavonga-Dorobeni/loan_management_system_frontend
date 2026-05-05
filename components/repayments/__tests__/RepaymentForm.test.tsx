@@ -22,6 +22,20 @@ jest.mock("@/components/toasts", () => ({
 
 const BASE = "http://localhost:3000/api/v1";
 
+const SCHEDULE_3_SLOTS = [
+  { year: 2026, month: 1, status: "COVERED", cumulativeReceived: 250, expected: 250 },
+  { year: 2026, month: 2, status: "PARTIAL", cumulativeReceived: 100, expected: 250 },
+  { year: 2026, month: 3, status: "UNCOVERED", cumulativeReceived: 0, expected: 250 },
+];
+
+function mockSchedule(slots: typeof SCHEDULE_3_SLOTS = SCHEDULE_3_SLOTS) {
+  server.use(
+    http.get(`${BASE}/loans/:id/schedule`, () =>
+      HttpResponse.json({ success: true, data: slots }),
+    ),
+  );
+}
+
 function renderForm(loanId: string | number = "l-1", lockLoanId = true, onCompleted = jest.fn()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return {
@@ -45,7 +59,8 @@ beforeEach(() => {
 });
 
 describe("RepaymentForm — create", () => {
-  it("submits a repayment and toasts the derived status", async () => {
+  it("defaults the period to the lowest non-covered slot and submits with period fields", async () => {
+    mockSchedule();
     let captured: unknown = null;
     server.use(
       http.post(`${BASE}/repayments`, async ({ request }) => {
@@ -58,6 +73,8 @@ describe("RepaymentForm — create", () => {
             amount: 250,
             transactionDate: "2026-04-29",
             status: "CORRECT",
+            periodYear: 2026,
+            periodMonth: 2,
           },
         });
       }),
@@ -66,7 +83,13 @@ describe("RepaymentForm — create", () => {
     const user = userEvent.setup();
     const { onCompleted } = renderForm();
 
-    expect(screen.getByLabelText(/loan id/i)).toHaveAttribute("readonly");
+    // Period dropdown should resolve to Feb 2026 (the lowest non-COVERED slot).
+    await waitFor(() =>
+      expect((screen.getByLabelText(/period/i) as HTMLSelectElement).value).toBe(
+        "2026-02",
+      ),
+    );
+
     const amount = screen.getByLabelText(/amount/i);
     await user.clear(amount);
     await user.type(amount, "250");
@@ -75,11 +98,42 @@ describe("RepaymentForm — create", () => {
     await waitFor(() =>
       expect(toastSuccess).toHaveBeenCalledWith("Repayment recorded (CORRECT)"),
     );
-    expect(captured).toMatchObject({ loanId: "l-1", amount: 250 });
+    expect(captured).toMatchObject({
+      loanId: "l-1",
+      amount: 250,
+      periodYear: 2026,
+      periodMonth: 2,
+    });
     expect(onCompleted).toHaveBeenCalled();
   });
 
+  it("disables already-covered slots in the Period select", async () => {
+    mockSchedule();
+    renderForm();
+
+    const select = (await screen.findByLabelText(/period/i)) as HTMLSelectElement;
+    // Wait for slots to populate.
+    await waitFor(() =>
+      expect(select.querySelector('option[value="2026-01"]')).not.toBeNull(),
+    );
+
+    const jan = select.querySelector(
+      'option[value="2026-01"]',
+    ) as HTMLOptionElement;
+    const feb = select.querySelector(
+      'option[value="2026-02"]',
+    ) as HTMLOptionElement;
+    const mar = select.querySelector(
+      'option[value="2026-03"]',
+    ) as HTMLOptionElement;
+
+    expect(jan.disabled).toBe(true);
+    expect(feb.disabled).toBe(false);
+    expect(mar.disabled).toBe(false);
+  });
+
   it("maps a 422 fieldError back to the form", async () => {
+    mockSchedule();
     server.use(
       http.post(`${BASE}/repayments`, () =>
         HttpResponse.json(
@@ -96,6 +150,13 @@ describe("RepaymentForm — create", () => {
 
     const user = userEvent.setup();
     renderForm();
+    await screen.findByLabelText(/period/i);
+    await waitFor(() =>
+      expect((screen.getByLabelText(/period/i) as HTMLSelectElement).value).toBe(
+        "2026-02",
+      ),
+    );
+
     const amount = screen.getByLabelText(/amount/i);
     await user.clear(amount);
     await user.type(amount, "100");

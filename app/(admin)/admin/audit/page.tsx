@@ -3,14 +3,14 @@ import { ActivityStream } from "@/components/admin/audit/ActivityStream";
 import { NotificationDeliveryPanel } from "@/components/admin/audit/NotificationDeliveryPanel";
 
 export const metadata = {
-  title: "Activity log — Loan Management",
+  title: "Audit log — Loan Management",
 };
 
 export default function AuditPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">Activity log</h1>
+        <h1 className="text-2xl font-semibold">Audit log</h1>
         <p className="text-sm text-muted-foreground">
           Human-readable record of every action across the platform. Click Diff
           on any entry with metadata to see before / after values.

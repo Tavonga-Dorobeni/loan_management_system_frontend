@@ -4,6 +4,11 @@ import { http, HttpResponse } from "msw";
 import { server } from "@/tests/msw/server";
 import { ExcelImportWizard } from "../ExcelImportWizard";
 
+const searchParams = new URLSearchParams();
+jest.mock("next/navigation", () => ({
+  useSearchParams: () => searchParams,
+}));
+
 const toastSuccess = jest.fn();
 const toastWarning = jest.fn();
 const toastError = jest.fn();
@@ -25,6 +30,7 @@ beforeEach(() => {
   toastWarning.mockReset();
   toastError.mockReset();
   toastImportSummary.mockReset();
+  searchParams.forEach((_, k) => searchParams.delete(k));
 });
 
 describe("ExcelImportWizard", () => {
@@ -138,6 +144,54 @@ describe("ExcelImportWizard", () => {
 
     expect(await screen.findByText(/only \.xlsx files/i)).toBeInTheDocument();
     expect(apiCalled).not.toHaveBeenCalled();
+  });
+
+  it("posts periodYear/periodMonth as query params when requirePeriod is set", async () => {
+    searchParams.set("year", "2026");
+    searchParams.set("month", "5");
+
+    let capturedUrl = "";
+    server.use(
+      http.post(`${BASE}/loans/import/repayments/excel`, ({ request }) => {
+        capturedUrl = request.url;
+        return HttpResponse.json({
+          success: true,
+          data: {
+            totalRows: 1,
+            successCount: 1,
+            failureCount: 0,
+            failedRows: [],
+          },
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    render(
+      <ExcelImportWizard
+        kind="repayments"
+        title="Repayments"
+        description="Upload an .xlsx file."
+        requirePeriod
+      />,
+    );
+
+    // Period dropdown defaults to May 2026 from the URL.
+    const periodSelect = screen.getByLabelText("Period") as HTMLSelectElement;
+    expect(periodSelect.value).toBe("2026-05");
+
+    // User overrides to Jul 2026.
+    await user.selectOptions(periodSelect, "2026-07");
+
+    const fileInput = screen.getByLabelText(/excel file/i) as HTMLInputElement;
+    const file = new File(["fake"], "rep.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    await user.click(screen.getByRole("button", { name: /process file/i }));
+
+    await waitFor(() => expect(capturedUrl).toContain("periodYear=2026"));
+    expect(capturedUrl).toContain("periodMonth=7");
   });
 
   it("falls back to the upload step when the API fails", async () => {

@@ -38,7 +38,7 @@ const NAV: NavItem[] = [
   },
   { href: "/reports", label: "Reports", icon: BarChart3, action: "reports.read" },
   { href: "/admin/users", label: "Users", icon: UserCog, adminOnly: true },
-  { href: "/admin/audit", label: "Activity Log", icon: ShieldAlert, adminOnly: true },
+  { href: "/admin/audit", label: "Audit Log", icon: ShieldAlert, adminOnly: true },
 ];
 
 export function Sidebar() {

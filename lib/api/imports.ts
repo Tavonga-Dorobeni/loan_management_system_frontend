@@ -7,12 +7,14 @@ export type ImportSummary = {
   failedRows: { rowNumber: number; reference?: string; error: string }[];
 };
 
-export function importIntake(form: FormData) {
-  return apiFetch<ImportSummary>("/loans/import/excel", { method: "POST", body: form });
+type ImportQuery = Record<string, string | number | boolean | null | undefined> | undefined;
+
+export function importIntake(form: FormData, query?: ImportQuery) {
+  return apiFetch<ImportSummary>("/loans/import/excel", { method: "POST", body: form, query });
 }
-export function importApprovals(form: FormData) {
-  return apiFetch<ImportSummary>("/loans/import/approvals/excel", { method: "POST", body: form });
+export function importApprovals(form: FormData, query?: ImportQuery) {
+  return apiFetch<ImportSummary>("/loans/import/approvals/excel", { method: "POST", body: form, query });
 }
-export function importRepayments(form: FormData) {
-  return apiFetch<ImportSummary>("/loans/import/repayments/excel", { method: "POST", body: form });
+export function importRepayments(form: FormData, query?: ImportQuery) {
+  return apiFetch<ImportSummary>("/loans/import/repayments/excel", { method: "POST", body: form, query });
 }

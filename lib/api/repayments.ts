@@ -5,9 +5,12 @@ export type RepaymentStatus = "CORRECT" | "OVER" | "UNDER";
 export type Repayment = {
   id: number | string;
   loanId: number | string;
+  loanReference?: string;
   amount: number;
   transactionDate: string;
   status: RepaymentStatus;
+  periodYear: number;
+  periodMonth: number;
   createdAt?: string;
 };
 
@@ -18,6 +21,8 @@ export type RepaymentListQuery = {
   sortOrder?: "asc" | "desc";
   loanId?: string | number;
   status?: RepaymentStatus;
+  periodYear?: number;
+  periodMonth?: number;
   /** UI lower bound for transactionDate; mapped to backend `transactionDateFrom`. */
   from?: string;
   /** UI upper bound for transactionDate; mapped to backend `transactionDateTo`. */
@@ -54,4 +59,51 @@ export function updateRepayment(id: string | number, body: Partial<Repayment>) {
 }
 export function deleteRepayment(id: string | number) {
   return apiFetch<void>(`/repayments/${id}`, { method: "DELETE" });
+}
+
+// ---------- Schedules ----------
+
+export type ScheduleMonthStatus =
+  | "FULL"
+  | "PARTIAL"
+  | "UNPAID"
+  | "UPCOMING"
+  | "INACTIVE";
+
+export type ScheduleMonth = {
+  month: number; // 1..12
+  label: string; // "January" .. "December"
+  expected: number;
+  received: number;
+  outstanding: number;
+  activeLoanCount: number;
+  repaymentCount: number;
+  status: ScheduleMonthStatus;
+};
+
+export type RepaymentSchedule = {
+  year: number;
+  nextPendingMonth: number | null;
+  months: ScheduleMonth[];
+  availableYears: number[];
+};
+
+export function getRepaymentSchedule(year: number) {
+  return apiFetch<RepaymentSchedule>("/repayments/schedule", {
+    query: { year },
+  });
+}
+
+export type LoanScheduleSlotStatus = "COVERED" | "PARTIAL" | "UNCOVERED";
+
+export type LoanScheduleSlot = {
+  year: number;
+  month: number;
+  status: LoanScheduleSlotStatus;
+  cumulativeReceived: number;
+  expected: number;
+};
+
+export function getLoanSchedule(loanId: string | number) {
+  return apiFetch<LoanScheduleSlot[]>(`/loans/${loanId}/schedule`);
 }

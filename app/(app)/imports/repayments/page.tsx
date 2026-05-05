@@ -26,7 +26,8 @@ export default function RepaymentsImportPage() {
         <ExcelImportWizard
           kind="repayments"
           title="Repayments"
-          description="Each row creates a repayment and atomically mutates the loan balance."
+          description="Each row creates a repayment and atomically mutates the loan balance. Pick the period the file applies to."
+          requirePeriod
         />
       </div>
     </div>

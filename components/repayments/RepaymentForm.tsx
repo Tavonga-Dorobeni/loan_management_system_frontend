@@ -1,24 +1,28 @@
 "use client";
 
-import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { toast, toastApiError } from "@/components/toasts";
 import { ApiError } from "@/lib/api-client";
 import {
   createRepayment,
+  getLoanSchedule,
   updateRepayment,
+  type LoanScheduleSlot,
   type Repayment,
 } from "@/lib/api/repayments";
 import {
   createRepaymentSchema,
   type CreateRepaymentInput,
 } from "@/schemas/repayment";
+import { formatCurrency } from "@/lib/format/currency";
 import { toIsoDate } from "@/lib/format/date";
 
 type CreateProps = {
@@ -35,7 +39,18 @@ type EditProps = {
 };
 type Props = CreateProps | EditProps;
 
-const FIELDS = ["loanId", "amount", "transactionDate"] as const;
+const FIELDS = [
+  "loanId",
+  "amount",
+  "transactionDate",
+  "periodYear",
+  "periodMonth",
+] as const;
+
+const SHORT_MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 
 function applyFieldErrors(
   fieldErrors: Record<string, string | string[]> | undefined,
@@ -52,22 +67,40 @@ function applyFieldErrors(
   return any;
 }
 
+function slotKey(slot: { year: number; month: number }) {
+  return `${slot.year}-${String(slot.month).padStart(2, "0")}`;
+}
+
+function pickDefaultSlot(slots: LoanScheduleSlot[] | undefined): LoanScheduleSlot | null {
+  if (!slots || slots.length === 0) return null;
+  const firstNonCovered = slots.find((s) => s.status !== "COVERED");
+  return firstNonCovered ?? slots[slots.length - 1];
+}
+
 export function RepaymentForm(props: Props) {
   const [submitting, setSubmitting] = useState(false);
   const queryClient = useQueryClient();
   const isEdit = props.mode === "edit";
   const lockLoanId = props.lockLoanId ?? false;
 
+  const initialPeriod = isEdit
+    ? { periodYear: props.repayment.periodYear, periodMonth: props.repayment.periodMonth }
+    : { periodYear: 0, periodMonth: 0 };
+
   const defaults: Partial<CreateRepaymentInput> = isEdit
     ? {
         loanId: props.repayment.loanId,
         amount: props.repayment.amount,
         transactionDate: props.repayment.transactionDate.slice(0, 10),
+        periodYear: props.repayment.periodYear,
+        periodMonth: props.repayment.periodMonth,
       }
     : {
         loanId: props.loanId,
         amount: 0,
         transactionDate: toIsoDate(new Date()),
+        periodYear: initialPeriod.periodYear,
+        periodMonth: initialPeriod.periodMonth,
       };
 
   const form = useForm<CreateRepaymentInput>({
@@ -80,8 +113,58 @@ export function RepaymentForm(props: Props) {
     register,
     handleSubmit,
     setError,
+    setValue,
+    watch,
     formState: { errors },
   } = form;
+
+  const watchedLoanId = watch("loanId");
+  const watchedYear = watch("periodYear");
+  const watchedMonth = watch("periodMonth");
+
+  const scheduleQ = useQuery({
+    queryKey: ["loan-schedule", String(watchedLoanId ?? "")],
+    queryFn: () => getLoanSchedule(watchedLoanId as string | number),
+    enabled: Boolean(watchedLoanId),
+  });
+
+  const slots = useMemo<LoanScheduleSlot[]>(
+    () => scheduleQ.data ?? [],
+    [scheduleQ.data],
+  );
+
+  // Auto-default the period field once the schedule loads, but only when the user
+  // hasn't already chosen one (or in edit mode where we keep the persisted value).
+  useEffect(() => {
+    if (isEdit) return;
+    if (!scheduleQ.data) return;
+    if (watchedYear && watchedMonth) return;
+    const def = pickDefaultSlot(scheduleQ.data);
+    if (def) {
+      setValue("periodYear", def.year, { shouldValidate: true });
+      setValue("periodMonth", def.month, { shouldValidate: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduleQ.data, isEdit]);
+
+  const selectedSlot = useMemo(
+    () =>
+      slots.find(
+        (s) => s.year === Number(watchedYear) && s.month === Number(watchedMonth),
+      ) ?? null,
+    [slots, watchedYear, watchedMonth],
+  );
+
+  function handlePeriodChange(value: string) {
+    if (!value) {
+      setValue("periodYear", 0);
+      setValue("periodMonth", 0);
+      return;
+    }
+    const [y, m] = value.split("-").map(Number);
+    setValue("periodYear", y, { shouldValidate: true });
+    setValue("periodMonth", m, { shouldValidate: true });
+  }
 
   async function onSubmit(values: CreateRepaymentInput) {
     setSubmitting(true);
@@ -100,6 +183,8 @@ export function RepaymentForm(props: Props) {
         queryClient.invalidateQueries({ queryKey: ["loan-repayments", loanId] }),
         queryClient.invalidateQueries({ queryKey: ["loan-details", loanId] }),
         queryClient.invalidateQueries({ queryKey: ["borrower-profile"] }),
+        queryClient.invalidateQueries({ queryKey: ["repayment-schedule"] }),
+        queryClient.invalidateQueries({ queryKey: ["loan-schedule", String(loanId)] }),
       ]);
       props.onCompleted?.();
     } catch (e) {
@@ -113,6 +198,13 @@ export function RepaymentForm(props: Props) {
       setSubmitting(false);
     }
   }
+
+  const periodValue =
+    watchedYear && watchedMonth
+      ? slotKey({ year: Number(watchedYear), month: Number(watchedMonth) })
+      : "";
+
+  const periodError = errors.periodYear?.message || errors.periodMonth?.message;
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
@@ -129,6 +221,49 @@ export function RepaymentForm(props: Props) {
         {errors.loanId && (
           <p role="alert" className="text-xs text-danger">
             {errors.loanId.message as string}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="period">Period</Label>
+        <Select
+          id="period"
+          aria-label="Period"
+          aria-invalid={periodError ? true : undefined}
+          value={periodValue}
+          onChange={(e) => handlePeriodChange(e.target.value)}
+          disabled={submitting || !watchedLoanId || scheduleQ.isLoading}
+        >
+          <option value="" disabled>
+            {scheduleQ.isLoading
+              ? "Loading schedule…"
+              : !watchedLoanId
+              ? "Enter a loan ID first"
+              : slots.length === 0
+              ? "No periods available"
+              : "Select a period"}
+          </option>
+          {slots.map((s) => (
+            <option
+              key={slotKey(s)}
+              value={slotKey(s)}
+              disabled={s.status === "COVERED"}
+            >
+              {SHORT_MONTHS[s.month - 1]} {s.year}
+              {s.status === "COVERED" ? " — paid" : s.status === "PARTIAL" ? " — partial" : ""}
+            </option>
+          ))}
+        </Select>
+        {selectedSlot && (
+          <p className="text-xs text-muted-foreground">
+            Cumulative received: {formatCurrency(selectedSlot.cumulativeReceived)} of{" "}
+            {formatCurrency(selectedSlot.expected)}
+          </p>
+        )}
+        {periodError && (
+          <p role="alert" className="text-xs text-danger">
+            {periodError as string}
           </p>
         )}
       </div>

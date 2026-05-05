@@ -112,7 +112,7 @@ export default async function LoanDetailPage({
           <Card>
             <CardHeader>
               <CardTitle>Status timeline</CardTitle>
-              <CardDescription>Status changes from the activity log.</CardDescription>
+              <CardDescription>Status changes from the audit log.</CardDescription>
             </CardHeader>
             <CardContent>
               <LoanStatusTimeline loanId={loan.id} />

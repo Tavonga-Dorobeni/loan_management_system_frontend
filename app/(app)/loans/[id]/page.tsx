@@ -6,6 +6,7 @@ import { LoanForm } from "@/components/loans/LoanForm";
 import { LoanBalanceCard } from "@/components/loans/LoanBalanceCard";
 import { RepaymentHistoryTable } from "@/components/loans/RepaymentHistoryTable";
 import { LoanStatusTimeline } from "@/components/loans/LoanStatusTimeline";
+import { EarlyMaturityDialog } from "@/components/loans/EarlyMaturityDialog";
 import { WriteOffLoanDialog } from "@/components/loans/WriteOffLoanDialog";
 import { RecordRepaymentDialog } from "@/components/repayments/RecordRepaymentDialog";
 import { ApiError } from "@/lib/api-client";
@@ -37,6 +38,7 @@ export default async function LoanDetailPage({
   const canWrite = can(user.role, "loans.write");
   const canStatusOnly = can(user.role, "loans.writeStatusOnly");
   const canWriteOff = can(user.role, "loans.writeOff");
+  const canEarlyMaturity = can(user.role, "loans.earlyMaturity");
   const canRecordRepayment = can(user.role, "repayments.write");
   const formMode = canWrite ? "edit" : canStatusOnly ? "edit-status-only" : null;
 
@@ -62,12 +64,21 @@ export default async function LoanDetailPage({
             · {loan.type}
           </p>
         </div>
-        {canWriteOff && (
-          <WriteOffLoanDialog
-            loanId={loan.id}
-            loanLabel={`Loan ${loan.referenceNumber}`}
-          />
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {canEarlyMaturity && (
+            <EarlyMaturityDialog
+              loanId={loan.id}
+              loanLabel={`Loan ${loan.referenceNumber}`}
+              amountDue={loan.amountDue ?? 0}
+            />
+          )}
+          {canWriteOff && (
+            <WriteOffLoanDialog
+              loanId={loan.id}
+              loanLabel={`Loan ${loan.referenceNumber}`}
+            />
+          )}
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">

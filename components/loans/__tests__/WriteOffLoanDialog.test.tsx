@@ -41,19 +41,16 @@ beforeEach(() => {
 });
 
 describe("WriteOffLoanDialog", () => {
-  it("posts status WRITE-OFF and the reason as message on submit", async () => {
-    let captured: { status?: string; message?: string } | null = null;
+  it("POSTs to /loans/:id/write-off with { reason } on submit", async () => {
+    let captured: { reason?: string } | null = null;
+    let url: string | null = null;
     server.use(
-      http.put(`${BASE}/loans/:id`, async ({ request }) => {
-        captured = (await request.json()) as { status?: string; message?: string };
+      http.post(`${BASE}/loans/:id/write-off`, async ({ request }) => {
+        url = request.url;
+        captured = (await request.json()) as { reason?: string };
         return HttpResponse.json({
           success: true,
-          data: {
-            id: "loan-42",
-            referenceNumber: "REF-042",
-            status: "WRITE-OFF",
-            message: captured.message,
-          },
+          data: { id: "loan-42", referenceNumber: "REF-042", status: "WRITE-OFF" },
         });
       }),
     );
@@ -68,9 +65,9 @@ describe("WriteOffLoanDialog", () => {
     await user.click(screen.getByRole("button", { name: /^write off$/i }));
 
     await waitFor(() => expect(captured).not.toBeNull());
+    expect(url).toContain("/loans/loan-42/write-off");
     expect(captured).toEqual({
-      status: "WRITE-OFF",
-      message: "Borrower deceased; estate has no assets to recover.",
+      reason: "Borrower deceased; estate has no assets to recover.",
     });
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Wrote off Loan REF-042"));
     expect(push).toHaveBeenCalledWith("/loans");
@@ -79,7 +76,7 @@ describe("WriteOffLoanDialog", () => {
   it("blocks submission when reason is too short and shows an inline error", async () => {
     let called = false;
     server.use(
-      http.put(`${BASE}/loans/:id`, () => {
+      http.post(`${BASE}/loans/:id/write-off`, () => {
         called = true;
         return HttpResponse.json({ success: true, data: {} });
       }),

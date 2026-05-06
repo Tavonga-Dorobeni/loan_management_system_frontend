@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { toast, toastApiError } from "@/components/toasts";
 import { ApiError } from "@/lib/api-client";
-import { updateLoan } from "@/lib/api/loans";
+import { writeOffLoan } from "@/lib/api/loans";
 import { cn } from "@/lib/utils";
 
 const writeOffSchema = z.object({
@@ -31,8 +31,6 @@ const writeOffSchema = z.object({
     .max(500, "Reason must be 500 characters or fewer"),
 });
 type WriteOffValues = z.infer<typeof writeOffSchema>;
-
-export const WRITE_OFF_STATUS = "WRITE-OFF";
 
 export function WriteOffLoanDialog({
   loanId,
@@ -57,10 +55,7 @@ export function WriteOffLoanDialog({
 
   async function onSubmit(values: WriteOffValues) {
     try {
-      await updateLoan(loanId, {
-        status: WRITE_OFF_STATUS,
-        message: values.reason,
-      });
+      await writeOffLoan(loanId, { reason: values.reason });
       toast.success(`Wrote off ${loanLabel}`);
       await queryClient.invalidateQueries({ queryKey: ["loans"] });
       await queryClient.invalidateQueries({

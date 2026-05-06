@@ -92,3 +92,23 @@ export function updateLoan(id: string | number, body: Partial<Loan>) {
 export function deleteLoan(id: string | number) {
   return apiFetch<void>(`/loans/${id}`, { method: "DELETE" });
 }
+
+/**
+ * Write-off action. Backend sets status=WRITE-OFF and message=reason and
+ * emits the `loan.write_off` activity log event (separate from `loan.updated`).
+ */
+export function writeOffLoan(id: string | number, body: { reason: string }) {
+  return apiFetch<Loan>(`/loans/${id}/write-off`, { method: "POST", body });
+}
+
+/**
+ * Early-maturity action. Backend reads the loan's current `amountDue`, sets
+ * `repaymentAmount = amountDue` and `endDate = maturityDate`, and emits the
+ * `loan.early_maturity` activity log event (separate from `loan.updated`).
+ */
+export function earlyMatureLoan(
+  id: string | number,
+  body: { maturityDate: string },
+) {
+  return apiFetch<Loan>(`/loans/${id}/early-maturity`, { method: "POST", body });
+}

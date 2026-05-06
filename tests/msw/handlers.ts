@@ -116,6 +116,10 @@ export const handlers = [
   http.get(`${BASE}/loans/:id`, () => ok(seedLoan)),
   http.put(`${BASE}/loans/:id`, () => ok(seedLoan)),
   http.delete(`${BASE}/loans/:id`, () => ok({ id: seedLoan.id })),
+  http.post(`${BASE}/loans/:id/write-off`, () =>
+    ok({ ...seedLoan, status: "WRITE-OFF" }),
+  ),
+  http.post(`${BASE}/loans/:id/early-maturity`, () => ok(seedLoan)),
   http.get(`${BASE}/loans/:id/details`, () =>
     ok({
       loan: seedLoan,

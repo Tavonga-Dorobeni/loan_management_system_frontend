@@ -1,5 +1,18 @@
 import { apiFetch } from "../api-client";
 
+export type TopActiveInstallment = {
+  loanId: number | string;
+  referenceNumber: string;
+  repaymentAmount: number;
+  endDate: string;
+  borrower: {
+    id: number | string;
+    ecNumber: string;
+    firstName: string;
+    lastName: string;
+  };
+};
+
 export type DashboardSummary = {
   totalActiveLoans: number;
   totalOutstandingAmountDue: number;
@@ -10,6 +23,28 @@ export type DashboardSummary = {
   recentImports: { type: string; at: string; success: number; failure: number }[];
   approvalTrend: { date: string; count: number }[];
   repaymentTrend: { date: string; count: number }[];
+
+  // Extended dashboard fields (optional until backend ships them)
+  monthlyCollectionsExpected?: number;
+  averageMonthlyInstallment?: number;
+  totalLoansOnBook?: number;
+  newThisYear?: number;
+  maturedClosedCount?: number;
+  activeRate?: number;
+
+  totalLoanBookSize?: number;
+  averageLoanSize?: number;
+  principalMaturingThisMonth?: number;
+  principalMaturingNext3Months?: number;
+
+  par30Rate?: number;
+  par90Rate?: number;
+  missingDataCount?: number;
+
+  maturityByMonth?: { month: string; count: number }[];
+  actualCollectionsByMonth?: { month: string; amount: number }[];
+
+  topActiveInstallments?: TopActiveInstallment[];
 };
 
 export const REPORT_SLUGS = [

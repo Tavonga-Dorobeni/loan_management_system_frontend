@@ -6,7 +6,7 @@ import { LoanForm } from "@/components/loans/LoanForm";
 import { LoanBalanceCard } from "@/components/loans/LoanBalanceCard";
 import { RepaymentHistoryTable } from "@/components/loans/RepaymentHistoryTable";
 import { LoanStatusTimeline } from "@/components/loans/LoanStatusTimeline";
-import { DeleteLoanDialog } from "@/components/loans/DeleteLoanDialog";
+import { WriteOffLoanDialog } from "@/components/loans/WriteOffLoanDialog";
 import { RecordRepaymentDialog } from "@/components/repayments/RecordRepaymentDialog";
 import { ApiError } from "@/lib/api-client";
 import { getLoanDetails } from "@/lib/api/loans";
@@ -36,7 +36,7 @@ export default async function LoanDetailPage({
   const { loan, borrower } = details;
   const canWrite = can(user.role, "loans.write");
   const canStatusOnly = can(user.role, "loans.writeStatusOnly");
-  const canDelete = can(user.role, "loans.delete");
+  const canWriteOff = can(user.role, "loans.writeOff");
   const canRecordRepayment = can(user.role, "repayments.write");
   const formMode = canWrite ? "edit" : canStatusOnly ? "edit-status-only" : null;
 
@@ -62,8 +62,8 @@ export default async function LoanDetailPage({
             · {loan.type}
           </p>
         </div>
-        {canDelete && (
-          <DeleteLoanDialog
+        {canWriteOff && (
+          <WriteOffLoanDialog
             loanId={loan.id}
             loanLabel={`Loan ${loan.referenceNumber}`}
           />

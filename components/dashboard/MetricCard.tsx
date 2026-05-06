@@ -29,7 +29,13 @@ export function MetricCard({
         </div>
       </CardHeader>
       <CardContent>
-        <div className={cn("numeric text-3xl font-semibold", TONE_CLASS[tone])}>
+        <div
+          className={cn(
+            "numeric truncate text-2xl font-semibold leading-tight",
+            TONE_CLASS[tone],
+          )}
+          title={value}
+        >
           {value}
         </div>
         {sublabel && (

@@ -6,7 +6,8 @@ export function LoanStatusBadge({ status }: LoanStatusBadgeProps) {
   const upper = status?.toUpperCase() ?? "";
   if (upper === "SUCCESS" || upper === "ACTIVE") return <Badge variant="success">{status}</Badge>;
   if (upper === "PENDING") return <Badge variant="warning">{status}</Badge>;
-  if (upper === "FAILED" || upper === "OVERDUE") return <Badge variant="danger">{status}</Badge>;
+  if (upper === "FAILED" || upper === "OVERDUE" || upper === "WRITE-OFF" || upper === "WRITEOFF")
+    return <Badge variant="danger">{status}</Badge>;
   return <Badge variant="secondary">{status}</Badge>;
 }
 

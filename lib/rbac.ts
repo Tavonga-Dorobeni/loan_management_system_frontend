@@ -21,6 +21,7 @@ export type Action =
   | "loans.read"
   | "loans.write"
   | "loans.writeStatusOnly"
+  | "loans.writeOff"
   | "loans.delete"
   | "repayments.read"
   | "repayments.write"
@@ -44,6 +45,7 @@ const MATRIX: Record<Action, Role[]> = {
   "loans.read": [...ROLES],
   "loans.write": ["admin", "loan_officer"],
   "loans.writeStatusOnly": ["credit_analyst"],
+  "loans.writeOff": ["admin"],
   "loans.delete": ["admin"],
   "repayments.read": [...ROLES],
   "repayments.write": ["admin", "collections_officer"],

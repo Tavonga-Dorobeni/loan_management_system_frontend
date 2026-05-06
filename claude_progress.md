@@ -369,6 +369,88 @@ Walked AGENT.md Appendix E against the running Codex backend (`http://localhost:
 - The 3 Excel imports (intake / approvals / repayments) — multipart `.xlsx` body. Backend smoke script covers these.
 - Both should be re-verified in the browser as part of a manual UI walk.
 
+### Dashboard redesign (2026-05-06) — frontend complete, backend pending
+
+Replaced the SPEC §13 placeholder dashboard with a 12-column control panel per the user's spec. Plan: `~/.claude/plans/this-is-what-i-foamy-panda.md`.
+
+**Layout**
+- `lg+`: Section A (`col-span-8`) + Section B (`col-span-4`) share one grid row so CSS auto-stretches them to equal height — no manual height arithmetic. Section C (`col-span-12`) sits below.
+- Cards inside each labeled group: `grid-cols-1 sm:grid-cols-2 xl:grid-cols-4`. Bumped to `xl:` (not `lg:`) because at 1024px Section A is only ≈683px wide and four cards with `text-2xl` currency clip at that width.
+
+**Components added (`components/dashboard/`)**
+- `SectionLabel.tsx` — small-caps muted-foreground heading wired to `aria-labelledby`.
+- `MaturityByMonthChart.tsx` — Recharts `BarChart`, brand-tone bars, X axis formatted via `formatMonthBucket("2026-05") → "May 26"`.
+- `MonthlyCollectionsChart.tsx` — Recharts `BarChart`, success-tone bars, Y axis uses compact currency (`$12k`), tooltip uses full `formatCurrency`.
+- `TopInstallmentsTable.tsx` — drives `DataTable` with EC Number / Name / Reference / Monthly Amount / End Date / Months Left columns. Name and Reference cells link to `/borrowers/[id]` and `/loans/[id]`. Numeric columns use `meta.numeric` so the table wrapper applies `.numeric text-right`.
+
+**Components edited**
+- `DashboardClient.tsx` — full rewrite. Single `useQuery(["dashboard-summary"])` drives all 16 cards, both charts, and the top-10 table. Currency / percent / integer formatting helpers are local to the file.
+- `MetricCard.tsx` — value typography tightened from `text-3xl` to `text-2xl`, added `truncate` + `title={value}` so wide currency strings don't overflow at 4-up.
+
+**Lib**
+- `lib/format/months.ts` (new) — `monthsBetween(from, to)` and `formatMonthBucket("YYYY-MM")` using `Intl.DateTimeFormat`. Avoided `date-fns` for these — std lib is enough.
+- `lib/api/reports.ts` — extended `DashboardSummary` with all new optional fields plus `TopActiveInstallment` type.
+
+**Tests / mocks**
+- `tests/msw/handlers.ts` — `/dashboard/portfolio-summary` mock now seeds every new field (one realistic row in `topActiveInstallments`).
+- `components/dashboard/__tests__/DashboardClient.test.tsx` — rewritten for the new structure: asserts the three section labels, all 16 card labels, currency/percent formatting (70% active rate, 12% PAR 30, $360,000 book size), top-10 link `href`s, and graceful placeholder fallback when extended fields are missing. Recharts mock now also stubs `BarChart` + `Bar`.
+- `components/dashboard/__tests__/TopInstallmentsTable.test.tsx` (new) — happy path and empty state.
+
+**Backend dependencies (Codex hand-off — NOT yet implemented)**
+
+`GET /api/v1/dashboard/portfolio-summary` needs to be extended with these fields. Until they ship, the FE renders `—` placeholders and an empty top-10 table — no crashes:
+
+- KPIs: `monthlyCollectionsExpected`, `averageMonthlyInstallment`, `totalLoansOnBook`, `newThisYear`, `maturedClosedCount`, `activeRate` (0..1)
+- Loan Book Size: `totalLoanBookSize`, `averageLoanSize`, `principalMaturingThisMonth`, `principalMaturingNext3Months`
+- Portfolio Quality: `par30Rate` (0..1), `par90Rate` (0..1), `missingDataCount`
+- Charts: `maturityByMonth: [{month: "YYYY-MM", count}]` (forward 12), `actualCollectionsByMonth: [{month: "YYYY-MM", amount}]` (last 12, sum of repayments grouped by transactionDate month)
+- Table: `topActiveInstallments: [{loanId, referenceNumber, repaymentAmount, endDate, borrower: {id, ecNumber, firstName, lastName}}]` ordered by `repaymentAmount` desc, limit 10, where `amountDue > 0`
+
+Definitions (post-correction 2026-05-06):
+- **Active** = `loans.status = 'ACTIVE'` (NOT `amountDue > 0` — this is a backwards-incompatible change to the backend's existing `totalActiveLoans` definition; flag with the user before shipping).
+- **Matured / Closed** = `loans.status = 'MATURED'`. Past-term-but-still-owing loans remain Active/PAR until a lifecycle job promotes them.
+- **Monthly Collections KPI** is single-month (current month default; optional `?month=YYYY-MM` param), sum of `repaymentAmount` for ACTIVE loans active that month.
+- **Monthly Collections chart** is historical actuals (last 12 months) — actuals don't filter on status.
+- **PAR 30 / PAR 90** = % of ACTIVE loans (decimal 0..1).
+
+Codex action item: confirm `loans.status` lifecycle rules (PENDING → ACTIVE on disbursement; ACTIVE → MATURED via what trigger?) before re-pointing dashboard formulas at the status column.
+
+Recommendation to Codex: keep all of this in the existing `/dashboard/portfolio-summary` envelope rather than fanning out — single fetch / single loading state / single cache key. SPEC §13 deviation; record in the brownfield gap log.
+
+**Verification — Dashboard redesign (all green)**
+- `npm run typecheck` — clean.
+- `npm run lint` — clean.
+- `npm test` — 78/78 across 23 suites.
+- `npm run build` — clean; `/dashboard` route now 103 kB First Load (BarChart added alongside the existing LineChart).
+
+### Loan write-off (2026-05-06) — frontend complete, backend status enum dependency
+
+Replaced the **Delete Loan** affordance on `/loans/[id]` with **Write off loan**. Per product owner, terminal-state loans in this system are written-off, not deleted; the loan record stays for audit, status flips to `WRITE-OFF`, and the reason lands in `loan.message`.
+
+**Components**
+- `components/loans/WriteOffLoanDialog.tsx` (new) — Radix Dialog + RHF + Zod (`reason: trim().min(10).max(500)`). On submit calls `updateLoan(id, { status: "WRITE-OFF", message: reason })`, toasts, invalidates `["loans"]` and `["loan-details", id]` caches, redirects to `/loans`. Maps `ApiError.fieldErrors.reason | .message` back to the inline reason field.
+- `components/loans/DeleteLoanDialog.tsx` — **deleted**. The only consumer was the Loan view page; no other code referenced it.
+- `components/status-badge.tsx` — `LoanStatusBadge` adds `WRITE-OFF` (and `WRITEOFF` as a tolerance) to the danger-tone branch.
+
+**Routes / RBAC**
+- `app/(app)/loans/[id]/page.tsx` — swapped `<DeleteLoanDialog>` → `<WriteOffLoanDialog>` and renamed `canDelete` → `canWriteOff`.
+- `lib/rbac.ts` — added new `loans.writeOff` action. Mapped to `["admin"]` only (matching the gravity of the prior delete affordance). The legacy `loans.delete` action is left in the matrix because the underlying `DELETE /loans/:id` API still exists, but no FE surface currently calls it.
+
+**Tests (RTL + MSW v2)** — `components/loans/__tests__/WriteOffLoanDialog.test.tsx`
+- Happy path: opens dialog, types a reason ≥ 10 chars, submits → captures the PUT body and asserts `{ status: "WRITE-OFF", message: <reason> }`, success toast, redirect to `/loans`.
+- Validation: typing "too short" surfaces an inline `role="alert"` message and never calls the API.
+
+**Backend dependencies (Codex hand-off)**
+- `loans.status` is a free-form string column, but `PUT /api/v1/loans/:id` likely has Joi validation that constrains the status enum. Codex needs to add `WRITE-OFF` to the allowlist (or remove the constraint) so the FE's payload doesn't 422.
+- The existing `loan.status.changed` Activity Log event covers WRITE-OFF automatically — `from` will be `ACTIVE`/`PENDING`/whatever the prior status was, `to` will be `WRITE-OFF`. No new event key needed.
+- AGENT.md §4 RBAC matrix row `Loans: delete` still reflects the old language. The product owner may want to rename it to "Loans: write-off" before final sign-off, but that's a docs-only edit.
+
+**Verification — Write-off (all green)**
+- `npm run typecheck` — clean.
+- `npm run lint` — clean.
+- `npm test` — 80/80 across 24 suites.
+- `npm run build` — clean.
+
 ## 3. Next steps
 
 1. **Manual UI walk** — log in as `smoke-admin-…@example.com` / `SmokePass123!` (or the canonical `admin@lms.co.zw` once its password is known) and click through:

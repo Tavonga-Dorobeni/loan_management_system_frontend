@@ -77,7 +77,7 @@ export function DashboardClient() {
     <div className="space-y-4">
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         {/* Section A — KPIs / Loan Book Size / Portfolio Quality */}
-        <section className="space-y-6 lg:col-span-8">
+        <section className="space-y-6 lg:col-span-7">
           <section aria-labelledby="kpi-label">
             <SectionLabel id="kpi-label">Key Performance Indicators</SectionLabel>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -115,7 +115,7 @@ export function DashboardClient() {
             the remaining height equally and chart 2's bottom lines up with the
             bottom of the Portfolio Quality cards. At <lg the mt and flex-1
             drop off so the charts stack naturally below Section A. */}
-        <section className="flex flex-col gap-4 lg:col-span-4">
+        <section className="flex flex-col gap-4 lg:col-span-5">
           <Card className="flex flex-col lg:mt-6 lg:flex-1">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold">
